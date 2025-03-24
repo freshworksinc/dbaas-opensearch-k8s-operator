@@ -13,6 +13,7 @@ import (
 	opsterv1 "github.com/Opster/opensearch-k8s-operator/opensearch-operator/api/v1"
 	"github.com/Opster/opensearch-k8s-operator/opensearch-operator/pkg/builders"
 	"github.com/Opster/opensearch-k8s-operator/opensearch-operator/pkg/helpers"
+	"github.com/Opster/opensearch-k8s-operator/opensearch-operator/pkg/metrics"
 	"github.com/Opster/opensearch-k8s-operator/opensearch-operator/pkg/reconcilers/k8s"
 	"github.com/Opster/opensearch-k8s-operator/opensearch-operator/pkg/reconcilers/util"
 	"github.com/Opster/opensearch-k8s-operator/opensearch-operator/pkg/tls"
@@ -306,13 +307,11 @@ func (r *TLSReconciler) handleTransportGenerateGlobal() error {
 			if err != nil {
 				r.logger.Error(err, "Failed to parse ValidTill date", "ValidTill", r.instance.Spec.Security.Tls.ValidTill)
 				return err
-
-			} else {
-				nodeCert, err = ca.CreateAndSignCertificateWithExpiry(clusterName, clusterName, dnsNames, validTill)
-				if err != nil {
-					r.logger.Error(err, "Failed to create and sign certificate with expiry")
-					return err
-				}
+			}
+			nodeCert, err = ca.CreateAndSignCertificateWithExpiry(clusterName, clusterName, dnsNames, validTill)
+			if err != nil {
+				r.logger.Error(err, "Failed to create and sign certificate with expiry")
+				return err
 			}
 		} else {
 			// Use default expiry
@@ -674,17 +673,26 @@ func (r *TLSReconciler) updateCertificateExpiry() error {
 		expiryTime = time.Now().AddDate(1, 0, 0)
 	}
 
+	// Calculate days until expiry for the metric
+	daysUntilExpiry := time.Until(expiryTime).Hours() / 24
+	clusterName := r.instance.Name
+	namespace := r.instance.Namespace
+
 	// Update the status fields using the UpdateOpenSearchClusterStatus method
-	key := client.ObjectKey{Name: r.instance.Name, Namespace: r.instance.Namespace}
+	key := client.ObjectKey{Name: clusterName, Namespace: namespace}
 	return r.client.UpdateOpenSearchClusterStatus(key, func(cluster *opsterv1.OpenSearchCluster) {
 		// Only set TransportCertificateExpiry if transport certificate generation is enabled
 		if r.instance.Spec.Security.Tls.Transport != nil && r.instance.Spec.Security.Tls.Transport.Generate {
 			cluster.Status.TransportCertificateExpiry = metav1.NewTime(expiryTime)
+			// Update the transport certificate metric
+			metrics.TLSCertExpiryDays.WithLabelValues(clusterName, namespace, "transport").Set(daysUntilExpiry)
 		}
 
 		// Only set HttpCertificateExpiry if HTTP certificate generation is enabled
 		if r.instance.Spec.Security.Tls.Http != nil && r.instance.Spec.Security.Tls.Http.Generate {
 			cluster.Status.HttpCertificateExpiry = metav1.NewTime(expiryTime)
+			// Update the HTTP certificate metric
+			metrics.TLSCertExpiryDays.WithLabelValues(clusterName, namespace, "http").Set(daysUntilExpiry)
 		}
 	})
 }
