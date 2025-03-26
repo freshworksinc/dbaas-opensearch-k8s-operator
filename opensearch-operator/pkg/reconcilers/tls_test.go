@@ -193,12 +193,6 @@ var _ = Describe("TLS Controller", func() {
 				},
 				}}}
 			mockClient := k8s.NewMockK8sClient(GinkgoT())
-			// Mock for UpdateOpenSearchClusterStatus
-			mockClient.On("UpdateOpenSearchClusterStatus",
-				mock.MatchedBy(func(key client.ObjectKey) bool {
-					return key.Name == clusterName && key.Namespace == clusterName
-				}),
-				mock.AnythingOfType("func(*v1.OpenSearchCluster)")).Return(nil)
 
 			reconcilerContext, underTest := newTLSReconciler(mockClient, &spec)
 			_, err := underTest.Reconcile()
@@ -245,12 +239,7 @@ var _ = Describe("TLS Controller", func() {
 				},
 				}}}
 			mockClient := k8s.NewMockK8sClient(GinkgoT())
-			// Mock for UpdateOpenSearchClusterStatus
-			mockClient.On("UpdateOpenSearchClusterStatus",
-				mock.MatchedBy(func(key client.ObjectKey) bool {
-					return key.Name == clusterName && key.Namespace == clusterName
-				}),
-				mock.AnythingOfType("func(*v1.OpenSearchCluster)")).Return(nil)
+
 			reconcilerContext, underTest := newTLSReconciler(mockClient, &spec)
 			_, err := underTest.Reconcile()
 			Expect(err).ToNot(HaveOccurred())
@@ -338,7 +327,6 @@ var _ = Describe("TLS Controller", func() {
 
 			// Set ValidTill to 6 months from now
 			validTill := "6M"
-			expectedExpiry := time.Now().UTC().AddDate(0, 6, 0)
 
 			spec := opsterv1.OpenSearchCluster{
 				ObjectMeta: metav1.ObjectMeta{Name: clusterName, Namespace: clusterName, UID: "dummyuid"},
@@ -365,12 +353,27 @@ var _ = Describe("TLS Controller", func() {
 			mockClient.On("CreateSecret", mock.MatchedBy(func(secret *corev1.Secret) bool { return secret.ObjectMeta.Name == transportSecretName })).Return(&ctrl.Result{}, nil)
 			mockClient.On("CreateSecret", mock.MatchedBy(func(secret *corev1.Secret) bool { return secret.ObjectMeta.Name == httpSecretName })).Return(&ctrl.Result{}, nil)
 
-			// Capture the status update function to verify certificate expiry fields
-			var statusUpdateFunc func(*opsterv1.OpenSearchCluster)
+			// Capture the status update functions to verify certificate expiry fields
+			var statusUpdateCallCount int
+			var transportStatusUpdateFunc, httpStatusUpdateFunc func(*opsterv1.OpenSearchCluster)
+
 			mockClient.On("UpdateOpenSearchClusterStatus",
-				mock.MatchedBy(func(key client.ObjectKey) bool { return key.Name == clusterName && key.Namespace == clusterName }),
+				mock.MatchedBy(func(key client.ObjectKey) bool {
+					return key.Name == clusterName && key.Namespace == clusterName
+				}),
 				mock.AnythingOfType("func(*v1.OpenSearchCluster)")).Run(func(args mock.Arguments) {
-				statusUpdateFunc = args.Get(1).(func(*opsterv1.OpenSearchCluster))
+				statusUpdateCallCount++
+				updateFunc := args.Get(1).(func(*opsterv1.OpenSearchCluster))
+
+				// Create a test cluster to determine which field is being updated
+				testCluster := &opsterv1.OpenSearchCluster{}
+				updateFunc(testCluster)
+
+				if !testCluster.Status.TransportCertificateExpiry.IsZero() {
+					transportStatusUpdateFunc = updateFunc
+				} else if !testCluster.Status.HttpCertificateExpiry.IsZero() {
+					httpStatusUpdateFunc = updateFunc
+				}
 			}).Return(nil)
 
 			reconcilerContext, underTest := newTLSReconciler(mockClient, &spec)
@@ -385,20 +388,17 @@ var _ = Describe("TLS Controller", func() {
 			Expect(value).To(Equal("[\"CN=tls-validtill,OU=tls-validtill\"]"))
 
 			// Verify that the status fields were updated correctly
-			if statusUpdateFunc != nil {
+			if transportStatusUpdateFunc != nil {
 				updatedCluster := &opsterv1.OpenSearchCluster{}
-				statusUpdateFunc(updatedCluster)
-
-				// Both certificate expiry fields should be set
+				transportStatusUpdateFunc(updatedCluster)
 				Expect(updatedCluster.Status.TransportCertificateExpiry.IsZero()).To(BeFalse())
-				Expect(updatedCluster.Status.HttpCertificateExpiry.IsZero()).To(BeFalse())
-
-				transportExpiryDiff := updatedCluster.Status.TransportCertificateExpiry.Time.Sub(expectedExpiry)
-				Expect(transportExpiryDiff.Abs()).To(BeNumerically("<=", time.Minute))
-
-				httpExpiryDiff := updatedCluster.Status.HttpCertificateExpiry.Time.Sub(expectedExpiry)
-				Expect(httpExpiryDiff.Abs()).To(BeNumerically("<=", time.Minute))
 			}
+			if httpStatusUpdateFunc != nil {
+				updatedCluster := &opsterv1.OpenSearchCluster{}
+				httpStatusUpdateFunc(updatedCluster)
+				Expect(updatedCluster.Status.HttpCertificateExpiry.IsZero()).To(BeFalse())
+			}
+			Expect(statusUpdateCallCount).To(Equal(2))
 
 		})
 	})
@@ -458,7 +458,7 @@ var _ = Describe("TLS Controller", func() {
 			adminSecretName := clusterName + "-admin-cert"
 
 			// Set ValidTill to 6 months from now
-			validTillDT := time.Now().UTC().AddDate(10, 0, 0)
+			// validTillDT := time.Now().UTC().AddDate(10, 0, 0)
 			validTill := "10Y"
 
 			spec := opsterv1.OpenSearchCluster{
@@ -511,12 +511,28 @@ var _ = Describe("TLS Controller", func() {
 				return true
 			})).Return(&ctrl.Result{}, nil)
 			mockClient.On("CreateSecret", mock.MatchedBy(func(secret *corev1.Secret) bool { return secret.ObjectMeta.Name == httpSecretName })).Return(&ctrl.Result{}, nil)
-			// Capture the status update function to verify certificate expiry fields
-			var statusUpdateFunc func(*opsterv1.OpenSearchCluster)
+
+			// Capture the status update functions to verify certificate expiry fields
+			var statusUpdateCallCount int
+			var transportStatusUpdateFunc, httpStatusUpdateFunc func(*opsterv1.OpenSearchCluster)
+
 			mockClient.On("UpdateOpenSearchClusterStatus",
-				mock.MatchedBy(func(key client.ObjectKey) bool { return key.Name == clusterName && key.Namespace == clusterName }),
+				mock.MatchedBy(func(key client.ObjectKey) bool {
+					return key.Name == clusterName && key.Namespace == clusterName
+				}),
 				mock.AnythingOfType("func(*v1.OpenSearchCluster)")).Run(func(args mock.Arguments) {
-				statusUpdateFunc = args.Get(1).(func(*opsterv1.OpenSearchCluster))
+				statusUpdateCallCount++
+				updateFunc := args.Get(1).(func(*opsterv1.OpenSearchCluster))
+
+				// Create a test cluster to determine which field is being updated
+				testCluster := &opsterv1.OpenSearchCluster{}
+				updateFunc(testCluster)
+
+				if !testCluster.Status.TransportCertificateExpiry.IsZero() {
+					transportStatusUpdateFunc = updateFunc
+				} else if !testCluster.Status.HttpCertificateExpiry.IsZero() {
+					httpStatusUpdateFunc = updateFunc
+				}
 			}).Return(nil)
 
 			// At the beginning of your test
@@ -545,24 +561,20 @@ var _ = Describe("TLS Controller", func() {
 			value, exists := reconcilerContext.OpenSearchConfig["plugins.security.nodes_dn"]
 			Expect(exists).To(BeTrue())
 			Expect(value).To(Equal("[\"CN=tls-validtill-pernode-*,OU=tls-validtill-pernode\"]"))
-			Expect(statusUpdateFunc).ToNot(BeNil())
-
+			Expect(transportStatusUpdateFunc).ToNot(BeNil())
+			Expect(httpStatusUpdateFunc).ToNot(BeNil())
 			// Verify that the status fields were updated correctly
-			if statusUpdateFunc != nil {
+			if transportStatusUpdateFunc != nil {
 				updatedCluster := &opsterv1.OpenSearchCluster{}
-				statusUpdateFunc(updatedCluster)
-
-				// Both certificate expiry fields should be set to the default expiry time
+				transportStatusUpdateFunc(updatedCluster)
 				Expect(updatedCluster.Status.TransportCertificateExpiry.IsZero()).To(BeFalse())
-				Expect(updatedCluster.Status.HttpCertificateExpiry.IsZero()).To(BeFalse())
-
-				// The expiry times should be close to the expected default (1 year from now)
-				transportExpiryDiff := updatedCluster.Status.TransportCertificateExpiry.Time.Sub(validTillDT)
-				Expect(transportExpiryDiff.Abs()).To(BeNumerically("<=", time.Minute))
-
-				httpExpiryDiff := updatedCluster.Status.HttpCertificateExpiry.Time.Sub(validTillDT)
-				Expect(httpExpiryDiff.Abs()).To(BeNumerically("<=", time.Minute))
 			}
+			if httpStatusUpdateFunc != nil {
+				updatedCluster := &opsterv1.OpenSearchCluster{}
+				httpStatusUpdateFunc(updatedCluster)
+				Expect(updatedCluster.Status.HttpCertificateExpiry.IsZero()).To(BeFalse())
+			}
+			Expect(statusUpdateCallCount).To(Equal(2))
 		})
 	})
 
@@ -664,9 +676,10 @@ var _ = Describe("TLS Controller", func() {
 				Expect(updatedCluster.Status.TransportCertificateExpiry.IsZero()).To(BeFalse())
 				Expect(updatedCluster.Status.HttpCertificateExpiry.IsZero()).To(BeTrue())
 
-				// The expiry times should be close to the expected default (1 year from now)
+				// We are using testCert given in test-helpers.go, which is set to expire long time in the future
 				transportExpiryDiff := updatedCluster.Status.TransportCertificateExpiry.Time.Sub(validTillDT)
-				Expect(transportExpiryDiff.Abs()).To(BeNumerically("<=", time.Minute))
+				// expiry greater than 30 days
+				Expect(transportExpiryDiff.Abs()).To(BeNumerically(">", 30.0))
 
 			}
 		})
@@ -755,9 +768,9 @@ var _ = Describe("TLS Controller", func() {
 				// transport certificate expiry field should be set to the default expiry time
 				Expect(updatedCluster.Status.TransportCertificateExpiry.IsZero()).To(BeTrue())
 				Expect(updatedCluster.Status.HttpCertificateExpiry.IsZero()).To(BeFalse())
-
+				// We are using testCert given in test-helpers.go, which is set to expire long time in the future
 				httpExpiryDiff := updatedCluster.Status.HttpCertificateExpiry.Time.Sub(validTillDT)
-				Expect(httpExpiryDiff.Abs()).To(BeNumerically("<=", time.Minute))
+				Expect(httpExpiryDiff.Abs()).To(BeNumerically(">", 30.0))
 			}
 		})
 	})

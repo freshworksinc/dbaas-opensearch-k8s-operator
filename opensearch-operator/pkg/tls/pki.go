@@ -35,6 +35,7 @@ type CertValidater interface {
 	IsExpiringSoon() bool
 	IsSignedByCA(ca Cert) (bool, error)
 	DaysUntilExpiry() float64
+	ExpiryDate() time.Time
 }
 
 // Dummy struct so that PKI interface can be implemented for easier mocking in tests
@@ -287,4 +288,8 @@ func (i *implCertValidater) IsSignedByCA(ca Cert) (bool, error) {
 func (i *implCertValidater) DaysUntilExpiry() float64 {
 	duration := time.Until(i.cert.NotAfter)
 	return duration.Hours() / 24
+}
+
+func (i *implCertValidater) ExpiryDate() time.Time {
+	return i.cert.NotAfter
 }
