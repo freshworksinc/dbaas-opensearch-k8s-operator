@@ -10,8 +10,10 @@ import (
 	opsterv1 "github.com/Opster/opensearch-k8s-operator/opensearch-operator/api/v1"
 	"github.com/Opster/opensearch-k8s-operator/opensearch-operator/mocks/github.com/Opster/opensearch-k8s-operator/opensearch-operator/pkg/reconcilers/k8s"
 	"github.com/Opster/opensearch-k8s-operator/opensearch-operator/pkg/helpers"
+	"github.com/Opster/opensearch-k8s-operator/opensearch-operator/pkg/metrics"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/mock"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -517,9 +519,21 @@ var _ = Describe("TLS Controller", func() {
 				statusUpdateFunc = args.Get(1).(func(*opsterv1.OpenSearchCluster))
 			}).Return(nil)
 
+			// At the beginning of your test
+			testRegistry := prometheus.NewRegistry()
+			testRegistry.MustRegister(metrics.TLSCertExpiryDays)
+
 			reconcilerContext, underTest := newTLSReconciler(mockClient, &spec)
 			_, err := underTest.Reconcile()
 			Expect(err).ToNot(HaveOccurred())
+
+			metricFamilies, err := testRegistry.Gather()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(metricFamilies).To(HaveLen(1))
+			// Expect(metricFamilies[0].GetMetric()).To(HaveLen(5))
+			for _, metric := range metricFamilies[0].GetMetric() {
+				Expect(metric.GetGauge().GetValue()).To(BeNumerically(">", 30.0))
+			}
 
 			mockCert := underTest.pki.(*helpers.PkiMock).GetUsedCertMock()
 			Expect(mockCert.NumTimesCalledCreateAndSignCertificate).To(Equal(0))

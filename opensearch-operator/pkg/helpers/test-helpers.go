@@ -8,6 +8,21 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
+const testCert = `-----BEGIN CERTIFICATE-----
+MIIB9DCCAZmgAwIBAgIULO/hHVrHV4Cy4tSRgG2pn9s84kkwCgYIKoZIzj0EAwIw
+TzELMAkGA1UEBhMCSU4xCzAJBgNVBAgMAlROMQwwCgYDVQQHDANHQ0MxCzAJBgNV
+BAoMAkZXMQswCQYDVQQLDAJDRTELMAkGA1UEAwwCT1MwHhcNMjUwMzI2MDgzODUx
+WhcNMzIwNjI3MDgzODUxWjBPMQswCQYDVQQGEwJJTjELMAkGA1UECAwCVE4xDDAK
+BgNVBAcMA0dDQzELMAkGA1UECgwCRlcxCzAJBgNVBAsMAkNFMQswCQYDVQQDDAJP
+UzBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABL6Cfm71Z4EEkElklTV/ZrFCXC4W
+zcrtpRcJ4wRhSb6ot1AShNr+g5paRGrltZ2Qaph8MHxoMzjCw33dGz4GeYOjUzBR
+MB0GA1UdDgQWBBR8lDV4Lj3wF9LpwFvpg76oumaV8TAfBgNVHSMEGDAWgBR8lDV4
+Lj3wF9LpwFvpg76oumaV8TAPBgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA0kA
+MEYCIQDjVQcGNf1gAC45taNHDymROEpiJO3mDXddKu/5c/72BAIhAK48LT3/4L0V
+bB/wGgSy0q1QWrIhfWxT8gc+qancJ/Ab
+-----END CERTIFICATE-----
+`
+
 // A simple mock to use whenever a record.EventRecorder is needed for a test
 type MockEventRecorder struct{}
 
@@ -55,16 +70,16 @@ type CertMock struct {
 
 func (cert *CertMock) SecretDataCA() map[string][]byte {
 	return map[string][]byte{
-		"ca.crt": []byte("ca.crt"),
+		"ca.crt": []byte(testCert),
 		"ca.key": []byte("ca.key"),
 	}
 }
 
 func (cert *CertMock) SecretData(ca tls.Cert) map[string][]byte {
 	return map[string][]byte{
-		"ca.crt":  []byte("ca.crt"),
+		"ca.crt":  []byte(testCert),
 		"tls.key": []byte("tls.key"),
-		"tls.crt": []byte("tls.crt"),
+		"tls.crt": []byte(testCert),
 	}
 }
 
@@ -73,7 +88,7 @@ func (cert *CertMock) KeyData() []byte {
 }
 
 func (cert *CertMock) CertData() []byte {
-	return []byte("tls.crt")
+	return []byte(testCert)
 }
 
 func (ca *CertMock) CreateAndSignCertificate(commonName string, orgUnit string, dnsnames []string) (cert tls.Cert, err error) {

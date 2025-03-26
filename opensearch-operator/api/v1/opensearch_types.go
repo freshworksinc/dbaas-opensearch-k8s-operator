@@ -229,8 +229,10 @@ type Security struct {
 type TlsConfig struct {
 	Transport *TlsConfigTransport `json:"transport,omitempty"`
 	Http      *TlsConfigHttp      `json:"http,omitempty"`
-	// ValidTill specifies the date until which the certificates should be valid in RFC3339 format
-	// Example: "2026-01-02T15:04:05Z" (UTC)
+	// ValidTill specifies the date until which the certificates should be valid.
+	// You can provide time using an integer ending with M, W, or Y representing months, weeks, and years
+	// Example: "12M" (12 months), "52W" (52 weeks), "2Y" (2 years)
+	// Note: You can only use one integer with one unit (M, W, Y) and cannot mix different units
 	ValidTill string `json:"validTill,omitempty"`
 }
 

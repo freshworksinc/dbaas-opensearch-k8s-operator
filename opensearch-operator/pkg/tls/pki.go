@@ -9,6 +9,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"time"
 )
@@ -33,6 +34,7 @@ type Cert interface {
 type CertValidater interface {
 	IsExpiringSoon() bool
 	IsSignedByCA(ca Cert) (bool, error)
+	DaysUntilExpiry() float64
 }
 
 // Dummy struct so that PKI interface can be implemented for easier mocking in tests
@@ -250,6 +252,9 @@ func NewCertValidater(pemData []byte, opts ...ImplCertValidaterOption) (CertVali
 	o.apply(opts...)
 
 	block, _ := pem.Decode(pemData)
+	if block == nil {
+		return nil, fmt.Errorf("failed to decode PEM data")
+	}
 
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
@@ -267,10 +272,19 @@ func (i *implCertValidater) IsExpiringSoon() bool {
 
 func (i *implCertValidater) IsSignedByCA(ca Cert) (bool, error) {
 	block, _ := pem.Decode(ca.CertData())
+	if block == nil {
+		return false, fmt.Errorf("failed to decode CA certificate PEM data")
+	}
+
 	caCert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
 		return false, err
 	}
 
 	return bytes.Equal(i.cert.RawIssuer, caCert.RawSubject), nil
+}
+
+func (i *implCertValidater) DaysUntilExpiry() float64 {
+	duration := time.Until(i.cert.NotAfter)
+	return duration.Hours() / 24
 }

@@ -33,33 +33,15 @@ import (
 
 	opsterv1 "github.com/Opster/opensearch-k8s-operator/opensearch-operator/api/v1"
 	monitoring "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
-	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	"net/http"
 	_ "net/http/pprof"
-)
-
-var (
-	goobers = prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "goobers_total",
-			Help: "Number of goobers processed",
-		},
-	)
-	gooberFailures = prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "goober_failures_total",
-			Help: "Number of failed goobers",
-		},
-	)
-	// New TLS certificate expiry metric is now defined in pkg/metrics/metrics.go
 )
 
 var (
@@ -72,10 +54,6 @@ func init() {
 	utilruntime.Must(opsterv1.AddToScheme(scheme))
 	utilruntime.Must(monitoring.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
-	// Register custom metrics with the global prometheus registry
-	// Register custom metrics with the global prometheus registry
-	ctrlmetrics.Registry.MustRegister(goobers, gooberFailures)
-	// TLSCertExpiryDays is registered in its own package
 
 }
 
@@ -123,6 +101,7 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
+	// Create a new manager to provide shared dependencies and start components
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
 		MetricsBindAddress:     metricsAddr,

@@ -201,6 +201,8 @@ func (r *TLSReconciler) shouldCreateAdminCert(ca tls.Cert) (bool, error) {
 		return false, err
 	}
 
+	metrics.TLSCertExpiryDays.WithLabelValues(r.instance.Name, r.instance.Namespace, r.adminSecretName()).Set(validator.DaysUntilExpiry())
+
 	if validator.IsExpiringSoon() {
 		r.logger.Info("admin cert is expiring soon, recreating")
 		return true, nil
@@ -262,6 +264,13 @@ func (r *TLSReconciler) createAdminSecret(ca tls.Cert) (*ctrl.Result, error) {
 	if err := ctrl.SetControllerReference(r.instance, adminSecret, r.client.Scheme()); err != nil {
 		return nil, err
 	}
+
+	validator, err := tls.NewCertValidater(adminCert.CertData())
+	if err != nil {
+		return nil, err
+	}
+	metrics.TLSCertExpiryDays.WithLabelValues(r.instance.Name, r.instance.Namespace, r.adminSecretName()).Set(validator.DaysUntilExpiry())
+
 	return r.client.CreateSecret(adminSecret)
 }
 
@@ -331,6 +340,18 @@ func (r *TLSReconciler) handleTransportGenerateGlobal() error {
 			return err
 		}
 	}
+
+	for key, data := range nodeSecret.Data {
+		if strings.HasSuffix(key, ".crt") && key != "ca.crt" {
+			validator, err := tls.NewCertValidater(data)
+			if err != nil {
+				return err
+			}
+			metrics.TLSCertExpiryDays.WithLabelValues(clusterName, namespace, nodeSecretName).Set(validator.DaysUntilExpiry())
+			break
+		}
+	}
+
 	// Tell cluster controller to mount secrets
 	volume := corev1.Volume{Name: "transport-cert", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: nodeSecretName}}}
 	r.reconcilerContext.Volumes = append(r.reconcilerContext.Volumes, volume)
@@ -386,7 +407,8 @@ func (r *TLSReconciler) handleTransportGeneratePerNode() error {
 
 	// Generate bootstrap pod cert
 	bootstrapPodName := builders.BootstrapPodName(r.instance)
-	_, bootstrapCertExists := nodeSecret.Data[fmt.Sprintf("%s.crt", bootstrapPodName)]
+	bootsStrapCertName := fmt.Sprintf("%s.crt", bootstrapPodName)
+	_, bootstrapCertExists := nodeSecret.Data[bootsStrapCertName]
 	_, bootstrapKeyExists := nodeSecret.Data[fmt.Sprintf("%s.key", bootstrapPodName)]
 
 	if !r.instance.Status.Initialized && !(bootstrapCertExists && bootstrapKeyExists) {
@@ -486,6 +508,18 @@ func (r *TLSReconciler) handleTransportGeneratePerNode() error {
 			return err
 		}
 	}
+
+	for key, data := range nodeSecret.Data {
+		if strings.HasSuffix(key, ".crt") && key != "ca.crt" {
+			validator, err := tls.NewCertValidater(data)
+			if err != nil {
+				return err
+			}
+			metrics.TLSCertExpiryDays.WithLabelValues(clusterName, namespace, nodeSecretName).Set(validator.DaysUntilExpiry())
+			break
+		}
+	}
+
 	// Tell cluster controller to mount secrets
 	volume := corev1.Volume{Name: "transport-cert", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: nodeSecretName}}}
 	r.reconcilerContext.Volumes = append(r.reconcilerContext.Volumes, volume)
@@ -607,6 +641,13 @@ func (r *TLSReconciler) handleHttp() error {
 				return err
 			}
 		}
+
+		validator, err := tls.NewCertValidater(nodeSecret.Data["tls.crt"])
+		if err != nil {
+			return err
+		}
+		metrics.TLSCertExpiryDays.WithLabelValues(r.instance.Name, r.instance.Namespace, nodeSecretName).Set(validator.DaysUntilExpiry())
+
 		// Tell cluster controller to mount secrets
 		volume := corev1.Volume{Name: "http-cert", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: nodeSecretName}}}
 		r.reconcilerContext.Volumes = append(r.reconcilerContext.Volumes, volume)
@@ -649,6 +690,13 @@ func (r *TLSReconciler) providedCaCert(secretName string, namespace string) (tls
 		}
 	}
 	ca = r.pki.CAFromSecret(data)
+
+	validator, err := tls.NewCertValidater(ca.CertData())
+	if err != nil {
+		return ca, err
+	}
+	metrics.TLSCertExpiryDays.WithLabelValues(r.instance.Name, r.instance.Namespace, util.CaCertKey).Set(validator.DaysUntilExpiry())
+
 	return ca, nil
 }
 
@@ -673,26 +721,17 @@ func (r *TLSReconciler) updateCertificateExpiry() error {
 		expiryTime = time.Now().AddDate(1, 0, 0)
 	}
 
-	// Calculate days until expiry for the metric
-	daysUntilExpiry := time.Until(expiryTime).Hours() / 24
-	clusterName := r.instance.Name
-	namespace := r.instance.Namespace
-
 	// Update the status fields using the UpdateOpenSearchClusterStatus method
-	key := client.ObjectKey{Name: clusterName, Namespace: namespace}
+	key := client.ObjectKey{Name: r.instance.Name, Namespace: r.instance.Namespace}
 	return r.client.UpdateOpenSearchClusterStatus(key, func(cluster *opsterv1.OpenSearchCluster) {
 		// Only set TransportCertificateExpiry if transport certificate generation is enabled
 		if r.instance.Spec.Security.Tls.Transport != nil && r.instance.Spec.Security.Tls.Transport.Generate {
 			cluster.Status.TransportCertificateExpiry = metav1.NewTime(expiryTime)
-			// Update the transport certificate metric
-			metrics.TLSCertExpiryDays.WithLabelValues(clusterName, namespace, "transport").Set(daysUntilExpiry)
 		}
 
 		// Only set HttpCertificateExpiry if HTTP certificate generation is enabled
 		if r.instance.Spec.Security.Tls.Http != nil && r.instance.Spec.Security.Tls.Http.Generate {
 			cluster.Status.HttpCertificateExpiry = metav1.NewTime(expiryTime)
-			// Update the HTTP certificate metric
-			metrics.TLSCertExpiryDays.WithLabelValues(clusterName, namespace, "http").Set(daysUntilExpiry)
 		}
 	})
 }
