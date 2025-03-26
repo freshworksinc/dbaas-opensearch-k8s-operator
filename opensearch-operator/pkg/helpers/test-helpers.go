@@ -8,6 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
+// openssl req -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -keyout ec_private.key -x509 -days 365 -out ec_certificate.crt
 const testCert = `-----BEGIN CERTIFICATE-----
 MIIB9DCCAZmgAwIBAgIULO/hHVrHV4Cy4tSRgG2pn9s84kkwCgYIKoZIzj0EAwIw
 TzELMAkGA1UEBhMCSU4xCzAJBgNVBAgMAlROMQwwCgYDVQQHDANHQ0MxCzAJBgNV
