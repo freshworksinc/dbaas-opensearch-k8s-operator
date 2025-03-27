@@ -346,9 +346,9 @@ type ClusterStatus struct {
 	// AvailableNodes is the number of available instances.
 	AvailableNodes int32            `json:"availableNodes,omitempty"`
 	Health         OpenSearchHealth `json:"health,omitempty"`
-	// TransportCertificateExpiry indicates when the TLS transport certificates will expire
+	// TransportCertificateExpiry indicates when the TLS transport certificates in secret will expire
 	TransportCertificateExpiry metav1.Time `json:"transportCertificateExpiry,omitempty"`
-	// HttpCertificateExpiry indicates when the TLS HTTP certificates will expire
+	// HttpCertificateExpiry indicates when the TLS HTTP certificates in secret will expire
 	HttpCertificateExpiry metav1.Time `json:"httpCertificateExpiry,omitempty"`
 }
 

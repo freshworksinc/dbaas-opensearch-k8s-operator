@@ -5456,7 +5456,7 @@ spec:
                 type: string
               httpCertificateExpiry:
                 description: HttpCertificateExpiry indicates when the TLS HTTP certificates
-                  will expire
+                  in secret will expire
                 format: date-time
                 type: string
               initialized:
@@ -5468,7 +5468,7 @@ spec:
                 type: string
               transportCertificateExpiry:
                 description: TransportCertificateExpiry indicates when the TLS transport
-                  certificates will expire
+                  certificates in secret will expire
                 format: date-time
                 type: string
               version:
