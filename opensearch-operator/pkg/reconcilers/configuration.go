@@ -49,6 +49,43 @@ func NewConfigurationReconciler(
 }
 
 func (r *ConfigurationReconciler) Reconcile() (ctrl.Result, error) {
+	// Create emptyDir volumes for writable directories that OpenSearch needs
+	writableVolumes := []opsterv1.AdditionalVolume{
+		{
+			Name:     "rw-config",
+			Path:     "/usr/share/opensearch/config",
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
+		},
+		{
+			Name:     "rw-logs",
+			Path:     "/usr/share/opensearch/logs",
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
+		},
+	}
+
+	// Add plugins directory volume if pluginsList is not empty
+	if len(r.instance.Spec.General.PluginsList) > 0 {
+		writableVolumes = append(writableVolumes, opsterv1.AdditionalVolume{
+			Name:     "rw-plugins",
+			Path:     "/usr/share/opensearch/plugins",
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
+		})
+	}
+
+	// Create the volumes and mounts
+	volumes, volumeMounts, _, err := util.CreateAdditionalVolumes(
+		r.client,
+		r.instance.Namespace,
+		writableVolumes,
+	)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	// Prepend the volumes and mounts to the reconciler context since they define base directories
+	r.reconcilerContext.Volumes = append(volumes, r.reconcilerContext.Volumes...)
+	r.reconcilerContext.VolumeMounts = append(volumeMounts, r.reconcilerContext.VolumeMounts...)
+
 	if len(r.instance.Spec.General.AdditionalVolumes) == 0 &&
 		(r.reconcilerContext.OpenSearchConfig == nil || len(r.reconcilerContext.OpenSearchConfig) == 0) {
 		return ctrl.Result{}, nil
