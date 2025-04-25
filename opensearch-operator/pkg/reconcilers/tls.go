@@ -497,6 +497,7 @@ func (r *TLSReconciler) handleHttp() error {
 				fmt.Sprintf("%s.%s", clusterName, namespace),
 				fmt.Sprintf("%s.%s.svc", clusterName, namespace),
 				fmt.Sprintf("%s.%s.svc.%s", clusterName, namespace, helpers.ClusterDnsBase()),
+				"*.opensearch.internal-us-east-1",
 			}
 			nodeCert, err := ca.CreateAndSignCertificate(clusterName, clusterName, dnsNames)
 			if err != nil {
