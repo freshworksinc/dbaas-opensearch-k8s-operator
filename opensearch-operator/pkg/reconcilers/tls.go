@@ -632,7 +632,7 @@ func (r *TLSReconciler) handleHttp() error {
 			}
 
 			// Add additional SANs if specified
-			if tlsConfig.AdditionalSANs != nil && len(tlsConfig.AdditionalSANs) > 0 {
+			if len(tlsConfig.AdditionalSANs) > 0 {
 				r.logger.Info("Adding additional SANs to HTTP certificate", "count", len(tlsConfig.AdditionalSANs))
 				dnsNames = append(dnsNames, tlsConfig.AdditionalSANs...)
 			}

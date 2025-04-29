@@ -141,7 +141,7 @@ func (r *DashboardsReconciler) handleTls() ([]corev1.Volume, []corev1.VolumeMoun
 			}
 
 			// Add additional SANs if specified
-			if r.instance.Spec.Dashboards.Tls.AdditionalSANs != nil && len(r.instance.Spec.Dashboards.Tls.AdditionalSANs) > 0 {
+			if len(r.instance.Spec.Dashboards.Tls.AdditionalSANs) > 0 {
 				r.logger.Info("Adding additional SANs to dashboard certificate", "count", len(r.instance.Spec.Dashboards.Tls.AdditionalSANs))
 				dnsNames = append(dnsNames, r.instance.Spec.Dashboards.Tls.AdditionalSANs...)
 			}
